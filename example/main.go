@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"os"
 	"time"
 
@@ -30,7 +29,7 @@ func main() {
 			}
 
 			fmt.Fprintf(t, "message %v\n", i)
-			time.Sleep(800 * time.Millisecond)
+			time.Sleep(300 * time.Millisecond)
 			i++
 		}
 	}()
@@ -43,15 +42,12 @@ func main() {
 		}
 
 		status := []byte(fmt.Sprintf("current time: %v\nfoobar line 2\n", time.Now()))
-		if rand.Float32() > 0.5 {
-			status = append(status, []byte("another line\n")...)
-		}
-		if rand.Float32() > 0.5 {
-			status = append(status, []byte("another line foo\n")...)
-		}
 
-		t.SetStatus(status)
-		time.Sleep(400 * time.Millisecond)
+		err := t.SetStatus(status)
+		if err != nil {
+			panic(err)
+		}
+		time.Sleep(50 * time.Millisecond)
 
 	}
 }

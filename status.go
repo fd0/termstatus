@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 )
 
@@ -52,6 +51,7 @@ func countLines(buf []byte) int {
 	return lines
 }
 
+// run listens on the channels and updates the terminal screen.
 func (t *Term) run(ctx context.Context) {
 	statusBuf := bytes.NewBuffer(nil)
 	statusLines := 0
@@ -61,7 +61,11 @@ func (t *Term) run(ctx context.Context) {
 			t.undoStatus(statusLines)
 			return
 		case msg := <-t.msg:
-			t.undoStatus(statusLines)
+			err := t.undoStatus(statusLines)
+			if err != nil {
+				msg.ch <- response{err: err}
+				continue
+			}
 
 			n, err := t.dst.Write(msg.buf)
 			if err != nil {
@@ -78,13 +82,16 @@ func (t *Term) run(ctx context.Context) {
 			msg.ch <- response{n: n}
 
 		case msg := <-t.status:
-			buf := bytes.TrimRight(msg.buf, "\n")
-			buf = append(buf, '\r')
-			t.undoStatus(statusLines)
+			err := t.undoStatus(statusLines)
+			if err != nil {
+				msg.ch <- response{err: err}
+				continue
+			}
 
+			buf := bytes.TrimRight(msg.buf, "\n")
 			lines := countLines(buf)
 
-			_, err := t.dst.Write(buf)
+			_, err = t.dst.Write(buf)
 			if err != nil {
 				msg.ch <- response{err: err}
 				continue
@@ -100,61 +107,13 @@ func (t *Term) run(ctx context.Context) {
 	}
 }
 
-const (
-	moveCursorHome = "\r"
-	moveCursorUp   = "\x1b[1A"
-	clearLine      = "\x1b[2K"
-)
-
 func (t *Term) undoStatus(lines int) error {
 	if lines == 0 {
 		return nil
 	}
 
-	// clear current line
-	_, err := t.dst.Write([]byte(moveCursorHome + clearLine))
-	if err != nil {
-		return err
-	}
-
 	lines--
-
-	const clearLine = moveCursorHome + moveCursorUp + clearLine
-
-	for ; lines > 0; lines-- {
-		// clear current line and move on line up
-		_, err := t.dst.Write([]byte(clearLine))
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (t *Term) updateStatus() {
-	buf := t.buf.Bytes()
-
-	if len(buf) == 0 {
-		return
-	}
-
-	fmt.Fprintf(t.dst, "\x1b[2K\n")
-
-	if buf[len(buf)-1] == '\n' {
-		buf = buf[:len(buf)-1]
-	}
-	buf = append(buf, '\r')
-
-	lines := 0
-	sc := bufio.NewScanner(bytes.NewReader(buf))
-	for sc.Scan() {
-		lines++
-	}
-
-	t.dst.Write(buf)
-
-	fmt.Fprintf(t.dst, "\x1b[%dA", lines)
+	return clearLines(t.dst, lines)
 }
 
 func (t *Term) Write(p []byte) (int, error) {
