@@ -7,14 +7,17 @@ import (
 	"io"
 )
 
-type Term struct {
-	dst    Terminal
+// Terminal is used to write messages and display status lines which can be
+// updated.
+type Terminal struct {
+	dst    TerminalWriter
 	buf    *bytes.Buffer
 	msg    chan message
 	status chan message
 }
 
-type Terminal interface {
+// TerminalWriter is an io.Writer which also has a file descriptor.
+type TerminalWriter interface {
 	io.Writer
 	Fd() uintptr
 }
@@ -29,8 +32,10 @@ type response struct {
 	err error
 }
 
-func New(ctx context.Context, dst Terminal) *Term {
-	t := &Term{
+// New returns a new Terminal for dst. A goroutine is started to update the
+// terminal. It is terminated when ctx is cancelled.
+func New(ctx context.Context, dst TerminalWriter) *Terminal {
+	t := &Terminal{
 		buf:    bytes.NewBuffer(nil),
 		dst:    dst,
 		msg:    make(chan message),
@@ -52,7 +57,7 @@ func countLines(buf []byte) int {
 }
 
 // run listens on the channels and updates the terminal screen.
-func (t *Term) run(ctx context.Context) {
+func (t *Terminal) run(ctx context.Context) {
 	statusBuf := bytes.NewBuffer(nil)
 	statusLines := 0
 	for {
@@ -107,7 +112,7 @@ func (t *Term) run(ctx context.Context) {
 	}
 }
 
-func (t *Term) undoStatus(lines int) error {
+func (t *Terminal) undoStatus(lines int) error {
 	if lines == 0 {
 		return nil
 	}
@@ -116,14 +121,15 @@ func (t *Term) undoStatus(lines int) error {
 	return clearLines(t.dst, lines)
 }
 
-func (t *Term) Write(p []byte) (int, error) {
+func (t *Terminal) Write(p []byte) (int, error) {
 	ch := make(chan response, 1)
 	t.msg <- message{buf: p, ch: ch}
 	res := <-ch
 	return res.n, res.err
 }
 
-func (t *Term) SetStatus(p []byte) error {
+// SetStatus updates the status lines with p.
+func (t *Terminal) SetStatus(p []byte) error {
 	ch := make(chan response, 1)
 	t.status <- message{buf: p, ch: ch}
 	res := <-ch
