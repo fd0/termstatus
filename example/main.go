@@ -28,7 +28,7 @@ func main() {
 			default:
 			}
 
-			fmt.Fprintf(t, "message %v\n", i)
+			t.Printf("message %v\n", i)
 			time.Sleep(300 * time.Millisecond)
 			i++
 		}
@@ -41,9 +41,12 @@ func main() {
 		default:
 		}
 
-		status := []byte(fmt.Sprintf("current time: %v\nfoobar line 2\n", time.Now()))
+		lines := []string{
+			fmt.Sprintf("current time: %v", time.Now()),
+			"foobar line2",
+		}
 
-		err := t.SetStatus(status)
+		err := t.SetStatus(lines)
 		if err != nil {
 			panic(err)
 		}
