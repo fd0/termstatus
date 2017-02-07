@@ -3,20 +3,27 @@
 package termstatus
 
 import (
-	"os"
+	"errors"
 	"syscall"
 	"unsafe"
-
-	isatty "github.com/mattn/go-isatty"
 )
 
 // clearLines clears the current line and n lines above it.
-func clearLines(wr Terminal, n int) error {
-	if !isatty.IsTerminal(os.Stdout.Fd()) {
-		return posixClearLines(wr, n)
+func clearLines(wr TerminalWriter) func(TerminalWriter, int) error {
+	// easy case, the terminal is cmd or psh, without redirection
+	if isWindowsTerminal(wr.Fd()) {
+		return windowsClearLines
 	}
 
-	return windowsClearLines(wr, n)
+	// check if the output file type is a pipe (0x0003)
+	if getFileType(wr.Fd()) != fileTypePipe {
+		return func(TerminalWriter, int) error {
+			return errors.New("update states not possible on this terminal")
+		}
+	}
+
+	// assume we're running in mintty/cygwin
+	return posixClearLines
 }
 
 var kernel32 = syscall.NewLazyDLL("kernel32.dll")
@@ -25,6 +32,8 @@ var (
 	procGetConsoleScreenBufferInfo = kernel32.NewProc("GetConsoleScreenBufferInfo")
 	procSetConsoleCursorPosition   = kernel32.NewProc("SetConsoleCursorPosition")
 	procFillConsoleOutputCharacter = kernel32.NewProc("FillConsoleOutputCharacterW")
+	procGetConsoleMode             = kernel32.NewProc("GetConsoleMode")
+	procGetFileType                = kernel32.NewProc("GetFileType")
 )
 
 type (
@@ -52,7 +61,7 @@ type (
 )
 
 // windowsClearLines clears the current line and n lines above it.
-func windowsClearLines(wr Terminal, n int) error {
+func windowsClearLines(wr TerminalWriter, n int) error {
 	var info consoleScreenBufferInfo
 	procGetConsoleScreenBufferInfo.Call(wr.Fd(), uintptr(unsafe.Pointer(&info)))
 
@@ -75,13 +84,49 @@ func windowsClearLines(wr Terminal, n int) error {
 	return nil
 }
 
-// windowsGetTermSize returns the dimensions of the given terminal.
+// getTermSize returns the dimensions of the given terminal.
 // the code is taken from "golang.org/x/crypto/ssh/terminal"
-func windowsGetTermSize() (width, height int, err error) {
+func getTermSize() (width, height int, err error) {
 	var info consoleScreenBufferInfo
 	_, _, e := syscall.Syscall(procGetConsoleScreenBufferInfo.Addr(), 2, uintptr(syscall.Stdout), uintptr(unsafe.Pointer(&info)), 0)
 	if e != 0 {
 		return 0, 0, error(e)
 	}
 	return int(info.size.x), int(info.size.y), nil
+}
+
+// isWindowsTerminal return true if the file descriptor is a windows terminal (cmd, psh).
+func isWindowsTerminal(fd uintptr) bool {
+	var st uint32
+	r, _, e := syscall.Syscall(procGetConsoleMode.Addr(), 2, fd, uintptr(unsafe.Pointer(&st)), 0)
+	return r != 0 && e == 0
+}
+
+const fileTypePipe = 0x0003
+
+// getFileType returns the file type for the given fd.
+// https://msdn.microsoft.com/de-de/library/windows/desktop/aa364960(v=vs.85).aspx
+func getFileType(fd uintptr) int {
+	r, _, e := syscall.Syscall(procGetFileType.Addr(), 1, fd, 0, 0)
+	if e != 0 {
+		return 0
+	}
+	return int(r)
+}
+
+// canUpdateStatus returns true if status lines can be printed, the process
+// output is not redirected to a file or pipe.
+func canUpdateStatus(wr TerminalWriter) bool {
+	// easy case, the terminal is cmd or psh, without redirection
+	if isWindowsTerminal(wr.Fd()) {
+		return true
+	}
+
+	// check if the output file type is a pipe (0x0003)
+	if getFileType(wr.Fd()) != fileTypePipe {
+		return false
+	}
+
+	// assume we're running in mintty/cygwin
+	return true
 }

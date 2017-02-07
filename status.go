@@ -8,12 +8,15 @@ import (
 )
 
 // Terminal is used to write messages and display status lines which can be
-// updated.
+// updated. When the output is redirected to a file, the status lines are not
+// printed.
 type Terminal struct {
-	dst    TerminalWriter
-	buf    *bytes.Buffer
-	msg    chan message
-	status chan message
+	dst             TerminalWriter
+	buf             *bytes.Buffer
+	msg             chan message
+	status          chan message
+	canUpdateStatus bool
+	clearLines      func(TerminalWriter, int) error
 }
 
 // TerminalWriter is an io.Writer which also has a file descriptor.
@@ -33,16 +36,23 @@ type response struct {
 }
 
 // New returns a new Terminal for dst. A goroutine is started to update the
-// terminal. It is terminated when ctx is cancelled.
+// terminal. It is terminated when ctx is cancelled. When dst is redirected to
+// a file (e.g. via shell output redirection), no status lines are printed.
 func New(ctx context.Context, dst TerminalWriter) *Terminal {
 	t := &Terminal{
-		buf:    bytes.NewBuffer(nil),
-		dst:    dst,
-		msg:    make(chan message),
-		status: make(chan message),
+		buf:             bytes.NewBuffer(nil),
+		dst:             dst,
+		msg:             make(chan message),
+		status:          make(chan message),
+		canUpdateStatus: canUpdateStatus(dst),
+		clearLines:      clearLines(dst),
 	}
 
-	go t.run(ctx)
+	if t.canUpdateStatus {
+		go t.run(ctx)
+	} else {
+		go t.runWithoutStatus(ctx)
+	}
 
 	return t
 }
@@ -112,13 +122,31 @@ func (t *Terminal) run(ctx context.Context) {
 	}
 }
 
+// runWithoutStatus listens on the channels and just prints out the messages,
+// without status lines.
+func (t *Terminal) runWithoutStatus(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg := <-t.msg:
+			n, err := t.dst.Write(msg.buf)
+			msg.ch <- response{n: n, err: err}
+
+		case msg := <-t.status:
+			// discard status lines
+			msg.ch <- response{n: len(msg.buf)}
+		}
+	}
+}
+
 func (t *Terminal) undoStatus(lines int) error {
 	if lines == 0 {
 		return nil
 	}
 
 	lines--
-	return clearLines(t.dst, lines)
+	return t.clearLines(t.dst, lines)
 }
 
 func (t *Terminal) Write(p []byte) (int, error) {

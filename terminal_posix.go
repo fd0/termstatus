@@ -1,7 +1,5 @@
 package termstatus
 
-import "io"
-
 const (
 	posixMoveCursorHome = "\r"
 	posixMoveCursorUp   = "\x1b[1A"
@@ -10,7 +8,7 @@ const (
 
 // posixClearLines will clear the current line and the n lines above.
 // Afterwards the cursor is positioned at the start of the first cleared line.
-func posixClearLines(wr io.Writer, n int) error {
+func posixClearLines(wr TerminalWriter, n int) error {
 	// clear current line
 	_, err := wr.Write([]byte(posixMoveCursorHome + posixClearLine))
 	if err != nil {
