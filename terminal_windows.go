@@ -86,9 +86,9 @@ func windowsClearLines(wr TerminalWriter, n int) error {
 
 // getTermSize returns the dimensions of the given terminal.
 // the code is taken from "golang.org/x/crypto/ssh/terminal"
-func getTermSize() (width, height int, err error) {
+func getTermSize(wr TerminalWriter) (width, height int, err error) {
 	var info consoleScreenBufferInfo
-	_, _, e := syscall.Syscall(procGetConsoleScreenBufferInfo.Addr(), 2, uintptr(syscall.Stdout), uintptr(unsafe.Pointer(&info)), 0)
+	_, _, e := syscall.Syscall(procGetConsoleScreenBufferInfo.Addr(), 2, uintptr(wr.Fd()), uintptr(unsafe.Pointer(&info)), 0)
 	if e != 0 {
 		return 0, 0, error(e)
 	}

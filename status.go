@@ -183,19 +183,29 @@ func (t *Terminal) SetStatus(lines []string) error {
 		return nil
 	}
 
-	// make sure that all lines have a line break
-	last := len(lines) - 1
-	for i, line := range lines[:last] {
+	width, _, err := getTermSize(t.dst)
+	if err != nil {
+		// use 80 columns by default
+		width = 80
+	}
+
+	// make sure that all lines have a line break and are not too long
+	for i, line := range lines {
 		if len(line) == 0 {
 			continue
 		}
-		if line[len(line)-1] != '\n' {
-			line += "\n"
+
+		line = strings.TrimRight(line, "\n")
+
+		if len(line) > width {
+			line = line[:width-1]
 		}
+		line += "\n"
 		lines[i] = line
 	}
 
 	// make sure the last line does not have a line break
+	last := len(lines) - 1
 	lines[last] = strings.TrimRight(lines[last], "\n")
 
 	ch := make(chan error, 1)
