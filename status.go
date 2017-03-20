@@ -17,6 +17,7 @@ type Terminal struct {
 	buf             *bytes.Buffer
 	msg             chan message
 	status          chan status
+	finish          chan chan error
 	canUpdateStatus bool
 	clearLines      func(TerminalWriter, int) error
 }
@@ -46,6 +47,7 @@ func New(ctx context.Context, dst TerminalWriter) *Terminal {
 		dst:             dst,
 		msg:             make(chan message),
 		status:          make(chan status),
+		finish:          make(chan chan error),
 		canUpdateStatus: canUpdateStatus(dst),
 		clearLines:      clearLines(dst),
 	}
@@ -80,6 +82,9 @@ func (t *Terminal) run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			t.undoStatus(statusLines)
+			return
+		case errch := <-t.finish:
+			errch <- t.undoStatus(statusLines)
 			return
 		case msg := <-t.msg:
 			err := t.undoStatus(statusLines)
@@ -171,7 +176,7 @@ func (t *Terminal) Print(line string) error {
 	return <-ch
 }
 
-// Printf uses fmt.Printf to write a line to the terminal.
+// Printf uses fmt.Sprintf to write a line to the terminal.
 func (t *Terminal) Printf(msg string, args ...interface{}) error {
 	s := fmt.Sprintf(msg, args...)
 	return t.Print(s)
@@ -210,5 +215,12 @@ func (t *Terminal) SetStatus(lines []string) error {
 
 	ch := make(chan error, 1)
 	t.status <- status{lines: lines, ch: ch}
+	return <-ch
+}
+
+// Finish removes the status lines.
+func (t *Terminal) Finish() error {
+	ch := make(chan error)
+	t.finish <- ch
 	return <-ch
 }
