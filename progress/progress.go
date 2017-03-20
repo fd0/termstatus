@@ -1,7 +1,6 @@
 package progress
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"time"
@@ -39,6 +38,6 @@ func (rd *progressReader) Read(p []byte) (int, error) {
 }
 
 // Reader returns a wrapped reader which reports progress statios via term.
-func Reader(ctx context.Context, rd io.Reader, term Terminal) io.Reader {
+func Reader(rd io.Reader, term Terminal) io.Reader {
 	return &progressReader{Reader: rd, term: term}
 }

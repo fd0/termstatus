@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 
 	"github.com/fd0/termstatus"
@@ -13,9 +15,16 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	t := termstatus.New(ctx, os.Stderr)
+	t := termstatus.New(ctx, os.Stdout)
 
-	rd := progress.Reader(ctx, os.Stdin, t)
+	rd := progress.Reader(os.Stdin, t)
 
-	io.Copy(os.Stdout, rd)
+	io.Copy(ioutil.Discard, rd)
+
+	err := t.Finish()
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("done\n")
 }
