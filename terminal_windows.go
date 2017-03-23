@@ -32,6 +32,7 @@ var (
 	procGetConsoleScreenBufferInfo = kernel32.NewProc("GetConsoleScreenBufferInfo")
 	procSetConsoleCursorPosition   = kernel32.NewProc("SetConsoleCursorPosition")
 	procFillConsoleOutputCharacter = kernel32.NewProc("FillConsoleOutputCharacterW")
+	procFillConsoleOutputAttribute = kernel32.NewProc("FillConsoleOutputAttribute")
 	procGetConsoleMode             = kernel32.NewProc("GetConsoleMode")
 	procGetFileType                = kernel32.NewProc("GetFileType")
 )
@@ -73,6 +74,7 @@ func windowsClearLines(wr TerminalWriter, n int) error {
 		}
 		var count, w dword
 		count = dword(info.size.x)
+		procFillConsoleOutputAttribute.Call(wr.Fd(), uintptr(info.attributes), uintptr(count), *(*uintptr)(unsafe.Pointer(&cursor)), uintptr(unsafe.Pointer(&w)))
 		procFillConsoleOutputCharacter.Call(wr.Fd(), uintptr(' '), uintptr(count), *(*uintptr)(unsafe.Pointer(&cursor)), uintptr(unsafe.Pointer(&w)))
 	}
 
