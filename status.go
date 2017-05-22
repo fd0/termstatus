@@ -196,10 +196,6 @@ func (t *Terminal) SetStatus(lines []string) error {
 
 	// make sure that all lines have a line break and are not too long
 	for i, line := range lines {
-		if len(line) == 0 {
-			continue
-		}
-
 		line = strings.TrimRight(line, "\n")
 
 		if len(line) > width {
