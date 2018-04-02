@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 )
 
 // Terminal is used to write messages and display status lines which can be
@@ -17,6 +18,7 @@ type Terminal struct {
 	buf             *bytes.Buffer
 	msg             chan message
 	status          chan status
+	finishOnce      sync.Once
 	finish          chan chan error
 	canUpdateStatus bool
 	clearLines      func(TerminalWriter, int) error
@@ -219,7 +221,11 @@ func (t *Terminal) SetStatus(lines []string) error {
 
 // Finish removes the status lines.
 func (t *Terminal) Finish() error {
-	ch := make(chan error)
-	t.finish <- ch
-	return <-ch
+	var err error
+	t.finishOnce.Do(func() {
+		ch := make(chan error)
+		t.finish <- ch
+		err = <-ch
+	})
+	return err
 }
