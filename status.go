@@ -19,7 +19,8 @@ type Terminal struct {
 	msg             chan message
 	status          chan status
 	finishOnce      sync.Once
-	finish          chan chan error
+	finish          chan struct{}
+	finishErr       chan error
 	canUpdateStatus bool
 	clearLines      func(TerminalWriter, int) error
 }
@@ -49,7 +50,8 @@ func New(ctx context.Context, dst TerminalWriter) *Terminal {
 		dst:             dst,
 		msg:             make(chan message),
 		status:          make(chan status),
-		finish:          make(chan chan error),
+		finish:          make(chan struct{}),
+		finishErr:       make(chan error, 1),
 		canUpdateStatus: canUpdateStatus(dst),
 		clearLines:      clearLines(dst),
 	}
@@ -83,10 +85,10 @@ func (t *Terminal) run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			t.undoStatus(statusLines)
+			t.finishErr <- t.undoStatus(statusLines)
 			return
-		case errch := <-t.finish:
-			errch <- t.undoStatus(statusLines)
+		case <-t.finish:
+			t.finishErr <- t.undoStatus(statusLines)
 			return
 		case msg := <-t.msg:
 			err := t.undoStatus(statusLines)
@@ -139,9 +141,10 @@ func (t *Terminal) runWithoutStatus(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			t.finishErr <- nil
 			return
-		case errch := <-t.finish:
-			errch <- nil
+		case <-t.finish:
+			t.finishErr <- nil
 			return
 		case msg := <-t.msg:
 			var err error
@@ -223,9 +226,8 @@ func (t *Terminal) SetStatus(lines []string) error {
 func (t *Terminal) Finish() error {
 	var err error
 	t.finishOnce.Do(func() {
-		ch := make(chan error)
-		t.finish <- ch
-		err = <-ch
+		close(t.finish)
+		err = <-t.finishErr
 	})
 	return err
 }
