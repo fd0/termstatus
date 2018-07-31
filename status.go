@@ -264,6 +264,7 @@ func (t *Terminal) Print(line string) {
 	case <-t.closed:
 		// write directly
 		fmt.Fprint(t.wr, line);
+		t.wr.Flush()
 	}
 }
 
