@@ -262,6 +262,8 @@ func (t *Terminal) Print(line string) {
 	select {
 	case t.msg <- message{line: line}:
 	case <-t.closed:
+		// write directly
+		fmt.Fprint(t.wr, line);
 	}
 }
 
@@ -281,6 +283,8 @@ func (t *Terminal) Error(line string) {
 	select {
 	case t.msg <- message{line: line, err: true}:
 	case <-t.closed:
+		// write directly
+		fmt.Fprint(t.errWriter, line);
 	}
 }
 
