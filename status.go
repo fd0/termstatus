@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 )
 
 // Terminal is used to write messages and display status lines which can be
@@ -21,6 +22,8 @@ type Terminal struct {
 	msg             chan message
 	status          chan status
 	canUpdateStatus bool
+
+	MaxFrameRate uint
 
 	// will be closed when the goroutine which runs Run() terminates, so it'll
 	// yield a default value immediately
@@ -52,12 +55,13 @@ type fder interface {
 // are printed even if the terminal supports it.
 func New(wr io.Writer, errWriter io.Writer, disableStatus bool) *Terminal {
 	t := &Terminal{
-		wr:        bufio.NewWriter(wr),
-		errWriter: errWriter,
-		buf:       bytes.NewBuffer(nil),
-		msg:       make(chan message),
-		status:    make(chan status),
-		closed:    make(chan struct{}),
+		wr:           bufio.NewWriter(wr),
+		errWriter:    errWriter,
+		buf:          bytes.NewBuffer(nil),
+		msg:          make(chan message),
+		status:       make(chan status),
+		closed:       make(chan struct{}),
+		MaxFrameRate: 60,
 	}
 
 	if disableStatus {
@@ -94,6 +98,10 @@ type stringWriter interface {
 // run listens on the channels and updates the terminal screen.
 func (t *Terminal) run(ctx context.Context) {
 	var status []string
+
+	var dirty bool
+	ticker := time.NewTicker(time.Second / time.Duration(t.MaxFrameRate))
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -153,9 +161,19 @@ func (t *Terminal) run(ctx context.Context) {
 				continue
 			}
 
+			// save the new status lines
 			status = status[:0]
 			status = append(status, stat.lines...)
+			dirty = true
+
+		case <-ticker.C:
+			if !dirty {
+				continue
+			}
+
+			// if the status has changed, write the new status lines
 			t.writeStatus(status)
+			dirty = false
 		}
 	}
 }
